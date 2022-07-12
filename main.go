@@ -48,11 +48,16 @@ func main() {
 	}
 	defer file.Close()
 
+	// Create output dir if it isn't exist. If it already exist MkdirAll does
+	// nothing.
 	if err := os.MkdirAll(outDir, 0777); err != nil {
 		log.Fatalln(err)
 	}
 
 	r := csv.NewReader(file)
+	r.ReuseRecord = true
+
+	// Depending on existence of --lowmem option use one of algorithms
 	if lowMem {
 		processCSVLowMem(r, outDir)
 	} else {
