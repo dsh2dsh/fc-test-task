@@ -5,7 +5,8 @@ import (
 	"flag"
 	"log"
 	"os"
-	"path"
+
+	"dsh/fc/app"
 )
 
 const (
@@ -71,15 +72,15 @@ func main() {
 // IP and proto name. It keeps aggregated data in memory and works faster. It
 // saves aggregated data into .csv files named by day-hour.csv in outPath dir.
 func processCSV(r *csv.Reader, outPath string) {
-	h, err := newHeader(r)
+	h, err := app.NewHeader(r)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
 	// In allData we keep all our aggregated data indexed by day-hour string
-	allData := make(map[string]hourData)
+	allData := make(map[string]app.HourData)
 	for {
-		netflow, err := newRecord(h, r)
+		netflow, err := app.NewRecord(h, r)
 		if err != nil {
 			log.Fatalln(err)
 		} else if netflow == nil {
@@ -87,80 +88,17 @@ func processCSV(r *csv.Reader, outPath string) {
 		}
 
 		// For unknown day-hour we need to create a new one
-		if _, present := allData[netflow.timeID]; !present {
-			allData[netflow.timeID] = make(hourData)
+		if _, present := allData[netflow.TimeID]; !present {
+			allData[netflow.TimeID] = make(app.HourData)
 		}
 		// Add new values into aggregated data
-		addHourData(allData[netflow.timeID], netflow)
+		allData[netflow.TimeID].Add(netflow)
 	}
 
 	// Save every day-hour data into its .csv file in outPath dir
 	for timeID, data := range allData {
-		if err := saveHourToFile(timeID, data, outPath); err != nil {
+		if err := app.SaveHourToFile(timeID, data, outPath); err != nil {
 			log.Fatalln(err)
 		}
 	}
-}
-
-// addHourData inserts new data into data map or adds new bytes and packets to
-// existing data
-func addHourData(data hourData, netflow *csvRecord) {
-	if nf, present := data[netflow.id]; present {
-		nf.bytes += netflow.bytes
-		nf.packets += netflow.packets
-	} else {
-		data[netflow.id] = netflow
-	}
-}
-
-// saveHourToFile saves data into outPath/timeID.csv. If such file exists it
-// overwrites it. First line is a header line with name of fields.
-func saveHourToFile(timeID string, data hourData, outPath string) error {
-	fname := path.Join(outPath, timeID+".csv")
-	f, err := os.Create(fname)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	if err := writeHourToFile(f, data, true); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// writeHourToFile writes data into file f. header flag shows does it need
-// header line or doesn't. If header == true first line of the file is a header
-// line with name of fields.
-func writeHourToFile(f *os.File, data hourData, header bool) error {
-	w := csv.NewWriter(f)
-
-	if header {
-		if err := writeCSVHeader(w); err != nil {
-			return err
-		}
-	}
-
-	if err := writeHour(w, data); err != nil {
-		return err
-	}
-
-	w.Flush()
-	if err := w.Error(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// writeHour writes aggregated data in CSV format to w
-func writeHour(w *csv.Writer, data hourData) error {
-	for _, v := range data {
-		if err := v.writeCSV(w); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path"
+
+	"dsh/fc/app"
 )
 
 // processCSVLowMem like [processCSV] reads input .csv file, parses it and
@@ -22,7 +24,7 @@ import (
 // On the second step it reads every previous preprocessed file, aggregates it
 // and writes aggregated data back into the same file, overwriting it.
 func processCSVLowMem(r *csv.Reader, outPath string) {
-	h, err := newHeader(r)
+	h, err := app.NewHeader(r)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -31,27 +33,27 @@ func processCSVLowMem(r *csv.Reader, outPath string) {
 	// for. So when we'll meet same day-hour we'll know should we overwrite its
 	// .csv file (which left from prev exec) or append into it if we flushed data
 	// into it before.
-	seenTimeID := newSeenHourData()
+	seenTimeID := app.NewSeenHourData()
 
 	// Let's preprocess the input file into many intermediate files, aggregated
 	// as much as possible.
 	for {
-		netflow, err := newRecord(h, r)
+		netflow, err := app.NewRecord(h, r)
 		if err != nil {
 			log.Fatalln(err)
-		} else if netflow == nil && seenTimeID.firstTime() {
+		} else if netflow == nil && seenTimeID.FirstTime() {
 			// We got EOF right after header line
 			break
 		}
 
-		if seenTimeID.firstTime() {
+		if seenTimeID.FirstTime() {
 			// First data line after header line
-			seenTimeID.rememberTimeID(netflow)
-			seenTimeID.resetHourData()
-		} else if netflow == nil || seenTimeID.anotherHour(netflow) {
+			seenTimeID.RememberTimeID(netflow)
+			seenTimeID.ResetHourData()
+		} else if netflow == nil || seenTimeID.AnotherHour(netflow) {
 			// End of input file or we got another day-hour line. In both cases we
 			// need to flush current data into .csv file.
-			if err := seenTimeID.flushHourData(outPath); err != nil {
+			if err := seenTimeID.FlushHourData(outPath); err != nil {
 				log.Fatalln(err)
 			}
 			if netflow == nil {
@@ -59,11 +61,11 @@ func processCSVLowMem(r *csv.Reader, outPath string) {
 				break
 			}
 			// Begin another .csv file
-			seenTimeID.rememberTimeID(netflow)
+			seenTimeID.RememberTimeID(netflow)
 		}
 
 		// Add new data into aggregated one
-		seenTimeID.addHourData(netflow)
+		seenTimeID.AddHourData(netflow)
 	}
 
 	// Now let's aggregate intermediate files
@@ -101,16 +103,16 @@ func commitCSVLowMem(outPath string) {
 // same .csv file. It's a light version of [processCSV] designed to process just
 // one .csv, which contains data for one day-hour only.
 func processSubCSV(r *csv.Reader, outPath string) error {
-	h, err := newHeader(r)
+	h, err := app.NewHeader(r)
 	if err != nil {
 		return err
 	}
 
 	var curTimeID string
-	data := make(hourData)
+	data := make(app.HourData)
 
 	for {
-		netflow, err := newRecordCompact(h, r)
+		netflow, err := app.NewRecordCompact(h, r)
 		if err != nil {
 			return err
 		} else if netflow == nil {
@@ -119,20 +121,19 @@ func processSubCSV(r *csv.Reader, outPath string) error {
 		if curTimeID == "" {
 			// First line after header. We need to remember day-hour ID, because we'll
 			// use it as name of the .csv file.
-			curTimeID = netflow.timeID
+			curTimeID = netflow.TimeID
 		}
 		// Add new data into aggregated data or insert new data into the map if it's
 		// new
-		if nf, present := data[netflow.id]; present {
-			nf.bytes += netflow.bytes
-			nf.packets += netflow.packets
+		if nf, present := data[netflow.ID]; present {
+			nf.Add(netflow)
 		} else {
-			data[netflow.id] = netflow
+			data[netflow.ID] = netflow
 		}
 	}
 
 	// End of intermediate file, let's overwrite it with aggregated data.
-	if err := saveHourToFile(curTimeID, data, outPath); err != nil {
+	if err := app.SaveHourToFile(curTimeID, data, outPath); err != nil {
 		return err
 	}
 
