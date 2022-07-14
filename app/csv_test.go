@@ -3,9 +3,11 @@ package app
 import (
 	"bytes"
 	"encoding/csv"
-	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -20,46 +22,39 @@ const (
 )
 
 func TestNewHeader(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	r := csv.NewReader(strings.NewReader(testRecord1))
 	h, err := NewHeader(r)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	want := CSVHeader{
 		"A": 0,
 		"B": 1,
 		"C": 2,
 	}
-
-	if !reflect.DeepEqual(h, want) {
-		t.Fatalf("got %q; want %q", h, want)
-	}
+	assert.Equal(h, want)
 }
 
 func TestExtractField(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	r := csv.NewReader(strings.NewReader(testRecord1))
 	h, err := NewHeader(r)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	record, err := r.Read()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	tests := map[string]string{
 		"A": "1",
 		"B": "2",
 		"C": "3",
 	}
-
 	for k, want := range tests {
-		got := h.extractField(k, record)
-		if got != want {
-			t.Fatalf("got %q; want %q", got, want)
-		}
+		assert.Equal(h.extractField(k, record), want)
 	}
 }
 
@@ -69,11 +64,7 @@ func TestGenUniqID(t *testing.T) {
 		DstIP:     "1.1.1.1",
 		ProtoName: "GOOGLE",
 	}
-	id := rec.genUniqID()
-	want := "A-1.1.1.1-GOOGLE"
-	if id != want {
-		t.Fatalf("got %q; want %q", id, want)
-	}
+	assert.Equal(t, rec.genUniqID(), "A-1.1.1.1-GOOGLE")
 }
 
 func makeTestRecord() (*CSVRecord, error) {
@@ -92,107 +83,61 @@ func makeTestRecord() (*CSVRecord, error) {
 }
 
 func TestNewRecord(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	rec, err := makeTestRecord()
-	if err != nil {
-		t.Fatal(err)
+	require.NoError(err)
+
+	want := &CSVRecord{
+		h:         rec.h,
+		TimeID:    "2017-04-26-11",
+		DstIP:     "172.19.1.46",
+		ProtoName: "HTTP_PROXY",
+		ID:        rec.genUniqID(),
+		Packets:   uint64(77),
+		Bytes:     uint64(110546),
 	}
-
-	t.Run("TimeID", func(t *testing.T) {
-		want := "2017-04-26-11"
-		if rec.TimeID != want {
-			t.Fatalf("got %q; want %q", rec.TimeID, want)
-		}
-	})
-
-	t.Run("DstIP", func(t *testing.T) {
-		want := "172.19.1.46"
-		if rec.DstIP != want {
-			t.Fatalf("got %q; want %q", rec.DstIP, want)
-		}
-	})
-
-	t.Run("ProtoName", func(t *testing.T) {
-		want := "HTTP_PROXY"
-		if rec.ProtoName != want {
-			t.Fatalf("got %q; want %q", rec.ProtoName, want)
-		}
-	})
-
-	t.Run("ID", func(t *testing.T) {
-		want := rec.genUniqID()
-		if rec.ID != want {
-			t.Fatalf("got %q; want %q", rec.ID, want)
-		}
-	})
-
-	t.Run("Packets", func(t *testing.T) {
-		want := uint64(77)
-		if rec.Packets != want {
-			t.Fatalf("got %d; want %d", rec.Packets, want)
-		}
-	})
-
-	t.Run("Bytes", func(t *testing.T) {
-		want := uint64(110546)
-		if rec.Bytes != want {
-			t.Fatalf("got %d; want %d", rec.Bytes, want)
-		}
-	})
+	assert.Equal(rec, want)
 }
 
 func TestExtractCounters(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	rec, err := makeTestRecord()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	testRecord := []string{"", "", "3e+05", "1"}
 	got, err := rec.extractCounters(
 		testRecord, "Total.Fwd.Packets", "Total.Backward.Packets")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	want := uint64(300001)
-	if got != want {
-		t.Fatalf("extractCounters can't parse 3e+05: got %d; want %d", got, want)
-	}
+	require.NoError(err)
+	assert.Equal(got, uint64(300001))
 }
 
 func TestAdd(t *testing.T) {
+	assert := assert.New(t)
+
 	rec := &CSVRecord{Packets: 1, Bytes: 2}
 	rec.Add(&CSVRecord{Packets: 3, Bytes: 4})
 
-	t.Run("Packets", func(t *testing.T) {
-		want := uint64(4)
-		if rec.Packets != want {
-			t.Fatalf("got %d; want %d", rec.Packets, want)
-		}
-	})
-
-	t.Run("Bytes", func(t *testing.T) {
-		want := uint64(6)
-		if rec.Bytes != want {
-			t.Fatalf("got %d; want %d", rec.Bytes, want)
-		}
-	})
+	assert.Equal(rec.Packets, uint64(4))
+	assert.Equal(rec.Bytes, uint64(6))
 }
 
 func TestWriteCSV(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	rec, err := makeTestRecord()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	b := new(bytes.Buffer)
 	w := csv.NewWriter(b)
 	rec.WriteCSV(w)
 	w.Flush()
 
-	want := "2017-04-26-11,172.19.1.46,HTTP_PROXY,77,110546\n"
-	if b.String() != want {
-		t.Fatalf("got %q; want %q", b.String(), want)
-	}
+	assert.Equal(b.String(), "2017-04-26-11,172.19.1.46,HTTP_PROXY,77,110546\n")
 }
 
 func TestWriteCSVHeader(t *testing.T) {
@@ -201,10 +146,7 @@ func TestWriteCSVHeader(t *testing.T) {
 	WriteCSVHeader(w)
 	w.Flush()
 
-	want := strings.Join(outHeaderRecord, ",") + "\n"
-	if b.String() != want {
-		t.Fatalf("got %q; want %q", b.String(), want)
-	}
+	assert.Equal(t, b.String(), strings.Join(outHeaderRecord, ",")+"\n")
 }
 
 func makeTestRecordCompact() (*CSVRecord, error) {
@@ -223,50 +165,20 @@ func makeTestRecordCompact() (*CSVRecord, error) {
 }
 
 func TestNewRecordCompact(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	rec, err := makeTestRecordCompact()
-	if err != nil {
-		t.Fatal(err)
+	require.NoError(err)
+
+	want := &CSVRecord{
+		h:         rec.h,
+		TimeID:    "2017-04-26-11",
+		DstIP:     "172.19.1.46",
+		ProtoName: "HTTP_PROXY",
+		ID:        rec.genUniqID(),
+		Packets:   uint64(77),
+		Bytes:     uint64(110546),
 	}
-
-	t.Run("TimeID", func(t *testing.T) {
-		want := "2017-04-26-11"
-		if rec.TimeID != want {
-			t.Fatalf("got %q; want %q", rec.TimeID, want)
-		}
-	})
-
-	t.Run("DstIP", func(t *testing.T) {
-		want := "172.19.1.46"
-		if rec.DstIP != want {
-			t.Fatalf("got %q; want %q", rec.DstIP, want)
-		}
-	})
-
-	t.Run("ProtoName", func(t *testing.T) {
-		want := "HTTP_PROXY"
-		if rec.ProtoName != want {
-			t.Fatalf("got %q; want %q", rec.ProtoName, want)
-		}
-	})
-
-	t.Run("ID", func(t *testing.T) {
-		want := rec.genUniqID()
-		if rec.ID != want {
-			t.Fatalf("got %q; want %q", rec.ID, want)
-		}
-	})
-
-	t.Run("Packets", func(t *testing.T) {
-		want := uint64(77)
-		if rec.Packets != want {
-			t.Fatalf("got %d; want %d", rec.Packets, want)
-		}
-	})
-
-	t.Run("Bytes", func(t *testing.T) {
-		want := uint64(110546)
-		if rec.Bytes != want {
-			t.Fatalf("got %d; want %d", rec.Bytes, want)
-		}
-	})
+	assert.Equal(rec, want)
 }

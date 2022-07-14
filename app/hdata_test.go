@@ -4,93 +4,57 @@ import (
 	"encoding/csv"
 	"os"
 	"path"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHourDataAdd(t *testing.T) {
-	data := make(HourData)
+	assert := assert.New(t)
 
+	data := make(HourData)
 	data.Add(&CSVRecord{ID: "A", Packets: 1, Bytes: 2})
-	if _, present := data["A"]; !present {
-		t.Fatalf("want 'A' in data; got false")
-	}
+	assert.Contains(data, "A")
 
 	data.Add(&CSVRecord{ID: "A", Packets: 3, Bytes: 4})
 	rec := data["A"]
-
-	t.Run("Packets", func(t *testing.T) {
-		want := uint64(4)
-		if rec.Packets != want {
-			t.Fatalf("got %d; want %d", rec.Packets, want)
-		}
-	})
-
-	t.Run("Bytes", func(t *testing.T) {
-		want := uint64(6)
-		if rec.Bytes != want {
-			t.Fatalf("got %d; want %d", rec.Bytes, want)
-		}
-	})
+	assert.Equal(rec.Packets, uint64(4))
+	assert.Equal(rec.Bytes, uint64(6))
 }
 
 func TestNewSeenHourData(t *testing.T) {
-	seenHD := NewSeenHourData()
+	assert := assert.New(t)
 
-	if !seenHD.FirstTime() {
-		t.Fatalf("got FirstTime() == false; want true")
-	}
+	seenHD := NewSeenHourData()
+	assert.True(seenHD.FirstTime())
 
 	rec := &CSVRecord{TimeID: "123", ID: "A", Packets: 1, Bytes: 2}
-	if !seenHD.AnotherHour(rec) {
-		t.Fatalf("got FirstTime() == false; want true")
-	}
+	assert.True(seenHD.AnotherHour(rec))
 
 	seenHD.RememberTimeID(rec)
-	if seenHD.AnotherHour(rec) {
-		t.Fatalf("got FirstTime() == true; want false")
-	}
-	if seenHD.timeID != "123" {
-		t.Fatalf("got TimeID == %q; want '123'", seenHD.timeID)
-	}
-
-	if seenHD.hourData() != nil {
-		t.Fatalf("got hourData() != nil; want nil")
-	}
+	assert.False(seenHD.AnotherHour(rec))
+	assert.Equal(seenHD.timeID, "123")
+	assert.Nil(seenHD.hourData())
 
 	seenHD.ResetHourData()
-	if seenHD.hourData() == nil {
-		t.Fatalf("got hourData() == nil; want not nil")
-	}
+	assert.NotNil(seenHD.hourData())
 
 	seenHD.AddHourData(rec)
-	if _, present := seenHD.hourData()["A"]; !present {
-		t.Fatalf("want 'A' in data; got false")
-	}
+	assert.Contains(seenHD.hourData(), "A")
 
 	seenHD.AddHourData(&CSVRecord{TimeID: "123", ID: "A", Packets: 3, Bytes: 4})
 	hd := seenHD.hourData()["A"]
-
-	t.Run("Packets", func(t *testing.T) {
-		want := uint64(4)
-		if hd.Packets != want {
-			t.Fatalf("got %d; want %d", hd.Packets, want)
-		}
-	})
-
-	t.Run("Bytes", func(t *testing.T) {
-		want := uint64(6)
-		if hd.Bytes != want {
-			t.Fatalf("got %d; want %d", hd.Bytes, want)
-		}
-	})
+	assert.Equal(hd.Packets, uint64(4))
+	assert.Equal(hd.Bytes, uint64(6))
 }
 
 func TestFlushHourData(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	netflow, err := makeTestRecordCompact()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	seenTimeID := NewSeenHourData()
 	seenTimeID.RememberTimeID(netflow)
@@ -98,38 +62,22 @@ func TestFlushHourData(t *testing.T) {
 	seenTimeID.AddHourData(netflow)
 
 	outPath := t.TempDir()
-	if err := seenTimeID.FlushHourData(outPath); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(seenTimeID.FlushHourData(outPath))
 
 	fname := path.Join(outPath, netflow.TimeID+".csv")
 	netflows, err := loadRecordsCompact(fname)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(netflows) != 1 {
-		t.Fatalf("got %d netflows; want 1", len(netflows))
-	}
-	if !reflect.DeepEqual(netflow, netflows[0]) {
-		t.Fatalf("got %q; want %q", netflows[0], netflow)
-	}
+	require.NoError(err)
+	assert.Len(netflows, 1)
+	assert.Equal(netflow, netflows[0])
 
 	seenTimeID.AddHourData(netflow)
-	if err := seenTimeID.FlushHourData(outPath); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(seenTimeID.FlushHourData(outPath))
 
 	netflows, err = loadRecordsCompact(fname)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(netflows) != 2 {
-		t.Fatalf("got %d netflows; want 2", len(netflows))
-	}
+	require.NoError(err)
+	assert.Len(netflows, 2)
 	for i := 0; i < len(netflows); i++ {
-		if !reflect.DeepEqual(netflow, netflows[i]) {
-			t.Fatalf("%d: got %q; want %q", i, netflows[i], netflow)
-		}
+		require.Equal(netflow, netflows[i])
 	}
 }
 
